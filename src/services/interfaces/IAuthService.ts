@@ -7,7 +7,8 @@ export interface LoginCredentials {
 
 export interface RegisterData {
   email: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   password: string;
 }
 

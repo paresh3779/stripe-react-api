@@ -1,6 +1,6 @@
 # Stripe React API - Production-Ready Express.js Backend
 
-A production-ready RESTful API built with Express.js, TypeScript, and Prisma ORM, featuring enterprise-level architecture, comprehensive security, and optimized performance.
+A production-ready RESTful API built with Express.js, TypeScript, and Prisma ORM, featuring enterprise-level architecture, comprehensive security, and complete Stripe payment integration.
 
 ## 🚀 Features
 
@@ -26,11 +26,23 @@ A production-ready RESTful API built with Express.js, TypeScript, and Prisma ORM
 - **Custom Error Classes**: AppError, ValidationError, UnauthorizedError, etc.
 - **Structured Logging**: Winston with file/console transports
 
-### Database
+### Database & Data Management
 - **Prisma ORM**: Type-safe database queries
-- **PostgreSQL**: Production database
+- **MySQL**: Production database (migrated from PostgreSQL)
 - **Migrations**: Version-controlled schema changes
-- **Connection Pooling**: Optimized database connections
+- **Seeders**: Pre-populated data for products, prices, coupons
+- **Factories**: Test data generation with Faker.js
+- **16+ Tables**: Complete Stripe ecosystem (Products, Prices, Payments, Subscriptions, Invoices, Coupons, etc.)
+
+### Stripe Integration
+- **Products Management**: One-time, subscription, and usage-based products
+- **Pricing Plans**: Flexible pricing with intervals and trial periods
+- **Payment Processing**: Complete payment intent and charge tracking
+- **Subscriptions**: Recurring billing with trial support
+- **Invoices**: Automated invoice generation and tracking
+- **Coupons & Promo Codes**: Discount management system
+- **Customer Management**: Stripe customer mapping and payment methods
+- **Webhook Events**: Event logging and processing
 
 ## 📁 Project Structure
 
@@ -75,11 +87,23 @@ src/
 ├── routes/                  # Route definitions
 │   ├── auth.routes.ts
 │   └── index.ts
+├── database/                # Database management
+│   ├── seeders/            # Data seeders
+│   │   ├── BaseSeeder.ts
+│   │   ├── DatabaseSeeder.ts
+│   │   ├── ProductsSeeder.ts
+│   │   ├── PricesSeeder.ts
+│   │   ├── CouponsSeeder.ts
+│   │   └── PromoCodesSeeder.ts
+│   └── factories/          # Test data factories
+│       ├── BaseFactory.ts
+│       ├── UserFactory.ts
+│       └── index.ts
 ├── app.ts                   # Express app setup
 └── server.ts               # Server bootstrap
 
 prisma/
-└── schema.prisma           # Database schema
+└── schema.prisma           # Database schema (16 tables)
 ```
 
 ## 🛠️ Tech Stack
@@ -98,7 +122,7 @@ prisma/
 
 ### Prerequisites
 - Node.js 20+ and npm
-- PostgreSQL 16+
+- MySQL 8.0+ (or MariaDB 10.5+)
 
 ### Installation
 
@@ -114,7 +138,7 @@ cp .env.example .env.development
 
 Edit `.env.development`:
 ```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/stripe_db?schema=public"
+DATABASE_URL="mysql://root:root@localhost:3306/stripe_db"
 JWT_SECRET=your-super-secret-jwt-key
 JWT_REFRESH_SECRET=your-super-secret-refresh-key
 CORS_ORIGIN=http://localhost:3001
@@ -122,14 +146,21 @@ CORS_ORIGIN=http://localhost:3001
 
 3. **Setup database**:
 ```bash
-# Create database
-createdb stripe_db
+# Create MySQL database
+mysql -u root -p
+CREATE DATABASE stripe_db;
+exit;
 
-# Run migrations
-npm run prisma:migrate
+# Or use MySQL Workbench / phpMyAdmin
 
 # Generate Prisma Client
-npm run prisma:generate
+npm run db:generate
+
+# Run migrations
+npm run db:migrate
+
+# Seed database with sample data
+npm run db:seed
 ```
 
 4. **Start development server**:
@@ -141,13 +172,26 @@ Server will start at `http://localhost:3000`
 
 ## 📝 Available Scripts
 
+### Development
 ```bash
 npm run dev              # Start development server with hot reload
 npm run build            # Build for production
 npm start                # Start production server
-npm run prisma:generate  # Generate Prisma Client
-npm run prisma:migrate   # Run database migrations
-npm run prisma:studio    # Open Prisma Studio (DB GUI)
+```
+
+### Database Management
+```bash
+npm run db:generate      # Generate Prisma Client
+npm run db:migrate       # Run migrations (interactive)
+npm run db:migrate:deploy # Deploy migrations (production)
+npm run db:reset         # Reset database (WARNING: deletes all data)
+npm run db:seed          # Seed database with sample data
+npm run db:seed:fresh    # Reset and seed database
+npm run db:studio        # Open Prisma Studio (DB GUI)
+```
+
+### Code Quality
+```bash
 npm run lint             # Run ESLint
 npm run format           # Format code with Prettier
 ```
@@ -266,24 +310,48 @@ GET /api/health
 
 ## 🗄️ Database Schema
 
-### User Model
-```prisma
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      Role     @default(USER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-```
+### Complete Database Structure (16 Tables)
 
-### Roles
+#### **Authentication & Users**
+- **users** - User accounts with firstName, lastName, email, password
+- **refresh_tokens** - JWT refresh token storage
+- **password_reset_tokens** - Password reset functionality
+
+#### **Products & Pricing**
+- **products** - Product catalog (one_time, subscription, usage_based)
+- **prices** - Pricing plans with intervals and trials
+- **coupon_products** - Product-coupon relationships
+
+#### **Payments & Transactions**
+- **payments** - Payment tracking (pending, succeeded, failed, refunded)
+- **subscriptions** - Recurring subscriptions with status tracking
+- **invoices** - Invoice generation and management
+
+#### **Discounts**
+- **coupons** - Discount coupons (percentage, fixed, duration-based)
+- **promo_codes** - Promotional codes linked to coupons
+
+#### **Stripe Integration**
+- **stripe_customers** - Stripe customer mapping
+- **stripe_payment_methods** - Saved payment methods
+- **stripe_webhook_events** - Webhook event logging
+
+### User Roles
 - `USER` - Regular user
 - `ADMIN` - Administrator
 - `SUPER_ADMIN` - Super administrator
+
+### Product Types
+- `ONE_TIME` - Single purchase products
+- `SUBSCRIPTION` - Recurring subscriptions
+- `USAGE_BASED` - Pay-per-use products
+
+### Sample Data (Seeders)
+The database comes pre-seeded with:
+- **5 Products**: Analytics Dashboard, Learning Platform, API Gateway, Marketing Toolkit, E-commerce Platform
+- **7 Pricing Plans**: Various monthly/yearly subscriptions and one-time purchases
+- **3 Coupons**: Welcome discount, Annual discount, Loyalty reward
+- **3 Promo Codes**: WELCOME2024, ANNUAL50, LOYALTY15
 
 ## 🏗️ Architecture Patterns
 

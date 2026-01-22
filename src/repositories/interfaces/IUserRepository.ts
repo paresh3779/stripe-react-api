@@ -2,7 +2,8 @@ import { User } from '@prisma/client';
 
 export interface CreateUserData {
   email: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   password: string;
 }
 

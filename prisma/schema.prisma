@@ -5,21 +5,33 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      Role     @default(USER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
 
-  refreshTokens RefreshToken[]
+model User {
+  id               String    @id @default(uuid())
+  firstName        String    @map("first_name")
+  lastName         String    @map("last_name")
+  email            String    @unique
+  emailVerifiedAt  DateTime? @map("email_verified_at")
+  password         String
+  rememberToken    String?   @map("remember_token")
+  role             Role      @default(USER)
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  refreshTokens      RefreshToken[]
+  stripeCustomers    StripeCustomer[]
+  payments           Payment[]
+  subscriptions      Subscription[]
+  invoices           Invoice[]
+  passwordResetTokens PasswordResetToken[]
 
   @@map("users")
 }
@@ -27,17 +39,351 @@ model User {
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
 }
 
+model PasswordResetToken {
+  email     String   @id
+  token     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [email], references: [email], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+// ============================================
+// PRODUCTS & PRICING
+// ============================================
+
+model Product {
+  id              String       @id @default(uuid())
+  name            String
+  slug            String       @unique
+  description     String?      @db.Text
+  image           String?
+  stripeProductId String?      @map("stripe_product_id")
+  type            ProductType
+  active          Boolean      @default(true)
+  isArchived      Boolean      @default(false) @map("is_archived")
+  archivedDate    DateTime?    @map("archived_date")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  prices         Price[]
+  payments       Payment[]
+  subscriptions  Subscription[]
+  couponProducts CouponProduct[]
+
+  @@map("products")
+}
+
+model Price {
+  id            String     @id @default(uuid())
+  productId     String     @map("product_id")
+  stripePriceId String     @unique @map("stripe_price_id")
+  description   String?    @db.Text
+  amount        BigInt
+  currency      String     @db.VarChar(10)
+  type          PriceType
+  interval      Interval?
+  intervalCount Int        @default(1) @map("interval_count")
+  trialDays     Int?       @map("trial_days")
+  features      Json?
+  active        Boolean    @default(true)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  product       Product        @relation(fields: [productId], references: [id])
+  payments      Payment[]
+  subscriptions Subscription[]
+
+  @@map("prices")
+}
+
+// ============================================
+// PAYMENTS & TRANSACTIONS
+// ============================================
+
+model Payment {
+  id                    String         @id @default(uuid())
+  userId                String         @map("user_id")
+  productId             String         @map("product_id")
+  priceId               String         @map("price_id")
+  stripePaymentIntentId String         @map("stripe_payment_intent_id")
+  stripeChargeId        String?        @map("stripe_charge_id")
+  stripeInvoiceId       String?        @map("stripe_invoice_id")
+  description           String?        @db.Text
+  amount                BigInt
+  currency              String         @db.VarChar(10)
+  status                PaymentStatus
+  paymentMethod         String?        @map("payment_method") @db.VarChar(50)
+  billingReason         BillingReason  @map("billing_reason")
+  paidAt                DateTime?      @map("paid_at")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  price   Price   @relation(fields: [priceId], references: [id])
+
+  @@map("payments")
+}
+
+// ============================================
+// SUBSCRIPTIONS & INVOICES
+// ============================================
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  userId               String             @map("user_id")
+  productId            String             @map("product_id")
+  priceId              String             @map("price_id")
+  stripeSubscriptionId String             @unique @map("stripe_subscription_id")
+  stripeCustomerId     String             @map("stripe_customer_id")
+  status               SubscriptionStatus @default(INCOMPLETE)
+  billingInterval      String             @map("billing_interval") @db.VarChar(20)
+  intervalCount        Int                @default(1) @map("interval_count")
+  amount               BigInt
+  currency             String             @db.VarChar(10)
+  trialStart           DateTime?          @map("trial_start")
+  trialEnd             DateTime?          @map("trial_end")
+  currentPeriodStart   DateTime?          @map("current_period_start")
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  canceledAt           DateTime?          @map("canceled_at")
+  endedAt              DateTime?          @map("ended_at")
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  metadata             Json?
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product  Product   @relation(fields: [productId], references: [id])
+  price    Price     @relation(fields: [priceId], references: [id])
+  invoices Invoice[]
+
+  @@index([userId, status])
+  @@index([stripeCustomerId])
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id                String        @id @default(uuid())
+  userId            String        @map("user_id")
+  subscriptionId    String?       @map("subscription_id")
+  stripeInvoiceId   String        @unique @map("stripe_invoice_id")
+  stripeCustomerId  String        @map("stripe_customer_id")
+  number            String?
+  status            InvoiceStatus @default(DRAFT)
+  amountDue         BigInt        @map("amount_due")
+  amountPaid        BigInt        @default(0) @map("amount_paid")
+  amountRemaining   BigInt        @default(0) @map("amount_remaining")
+  subtotal          BigInt
+  total             BigInt
+  tax               BigInt        @default(0)
+  currency          String        @db.VarChar(10)
+  description       String?       @db.Text
+  hostedInvoiceUrl  String?       @map("hosted_invoice_url")
+  invoicePdf        String?       @map("invoice_pdf")
+  dueDate           DateTime?     @map("due_date")
+  paidAt            DateTime?     @map("paid_at")
+  periodStart       DateTime?     @map("period_start")
+  periodEnd         DateTime?     @map("period_end")
+  lineItems         Json?         @map("line_items")
+  metadata          Json?
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([stripeCustomerId])
+  @@map("invoices")
+}
+
+// ============================================
+// COUPONS & PROMO CODES
+// ============================================
+
+model Coupon {
+  id               String    @id @default(uuid())
+  name             String
+  description      String?   @db.Text
+  stripeCouponId   String    @unique @map("stripe_coupon_id")
+  discountType     DiscountType @map("discount_type")
+  discountValue    BigInt    @map("discount_value")
+  currency         String?   @db.VarChar(10)
+  duration         Duration
+  durationInMonths Int?      @map("duration_in_months")
+  maxRedemptions   Int?      @map("max_redemptions")
+  timesRedeemed    Int       @default(0) @map("times_redeemed")
+  validFrom        DateTime? @map("valid_from")
+  validUntil       DateTime? @map("valid_until")
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  promoCodes     PromoCode[]
+  couponProducts CouponProduct[]
+
+  @@map("coupons")
+}
+
+model PromoCode {
+  id             String    @id @default(uuid())
+  couponId       String    @map("coupon_id")
+  code           String    @unique
+  stripePromoId  String    @unique @map("stripe_promo_id")
+  maxRedemptions Int?      @map("max_redemptions")
+  timesRedeemed  Int       @default(0) @map("times_redeemed")
+  active         Boolean   @default(true)
+  expiresAt      DateTime? @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+
+  @@map("promo_codes")
+}
+
+model CouponProduct {
+  id        String   @id @default(uuid())
+  couponId  String   @map("coupon_id")
+  productId String   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  coupon  Coupon  @relation(fields: [couponId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("coupon_products")
+}
+
+// ============================================
+// STRIPE INTEGRATION
+// ============================================
+
+model StripeCustomer {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  stripeCustomerId String   @unique @map("stripe_customer_id")
+  email            String
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user           User                 @relation(fields: [userId], references: [id])
+  paymentMethods StripePaymentMethod[]
+
+  @@map("stripe_customers")
+}
+
+model StripePaymentMethod {
+  id                    String   @id @default(uuid())
+  stripeCustomerId      String   @map("stripe_customer_id")
+  stripePaymentMethodId String   @unique @map("stripe_payment_method_id")
+  type                  String
+  last4                 String?
+  brand                 String?
+  expiryMonth           Int?     @map("expiry_month")
+  expiryYear            Int?     @map("expiry_year")
+  isDefault             Boolean  @default(false) @map("is_default")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  customer StripeCustomer @relation(fields: [stripeCustomerId], references: [stripeCustomerId])
+
+  @@map("stripe_payment_methods")
+}
+
+model StripeWebhookEvent {
+  id              String   @id @default(uuid())
+  stripeEventId   String   @unique @map("stripe_event_id")
+  type            String
+  data            Json
+  processed       Boolean  @default(false)
+  processingError String?  @db.Text @map("processing_error")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([processed])
+  @@map("stripe_webhook_events")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
 enum Role {
   USER
   ADMIN
   SUPER_ADMIN
+}
+
+enum ProductType {
+  ONE_TIME      @map("one_time")
+  SUBSCRIPTION  @map("subscription")
+  USAGE_BASED   @map("usage_based")
+}
+
+enum PriceType {
+  ONE_TIME   @map("one_time")
+  RECURRING  @map("recurring")
+}
+
+enum Interval {
+  DAY   @map("day")
+  WEEK  @map("week")
+  MONTH @map("month")
+  YEAR  @map("year")
+}
+
+enum PaymentStatus {
+  PENDING             @map("pending")
+  SUCCEEDED           @map("succeeded")
+  FAILED              @map("failed")
+  REFUNDED            @map("refunded")
+  PARTIALLY_REFUNDED  @map("partially_refunded")
+}
+
+enum BillingReason {
+  ONE_TIME      @map("one_time")
+  SUBSCRIPTION  @map("subscription")
+  ADDON         @map("addon")
+}
+
+enum SubscriptionStatus {
+  ACTIVE              @map("active")
+  PAST_DUE            @map("past_due")
+  UNPAID              @map("unpaid")
+  CANCELED            @map("canceled")
+  INCOMPLETE          @map("incomplete")
+  INCOMPLETE_EXPIRED  @map("incomplete_expired")
+  TRIALING            @map("trialing")
+  PAUSED              @map("paused")
+}
+
+enum InvoiceStatus {
+  DRAFT         @map("draft")
+  OPEN          @map("open")
+  PAID          @map("paid")
+  UNCOLLECTIBLE @map("uncollectible")
+  VOID          @map("void")
+}
+
+enum DiscountType {
+  PERCENTAGE @map("percentage")
+  FIXED      @map("fixed")
+}
+
+enum Duration {
+  ONCE      @map("once")
+  REPEATING @map("repeating")
+  FOREVER   @map("forever")
 }
