@@ -1,43 +1,135 @@
+# ============================================
+# CRITICAL: Security & Configuration Files
+# ============================================
+# Environment variables (NEVER commit these)
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
+.env.*.local
+*.env
+
+# SSL/TLS certificates and keys
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# AWS credentials
+.aws/
+
+# SSH keys
+id_rsa
+id_rsa.pub
+*.ppk
+
+# API keys and secrets (common names)
+secrets.json
+secrets.yml
+credentials.json
+config.local.*
+
+# ============================================
 # Dependencies
+# ============================================
 node_modules/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+.pnp.*
+.yarn/*
 
-# Environment variables
-.env
-.env.local
-.env.production
-.env.*.local
-
-# Build output
+# ============================================
+# Build Output
+# ============================================
 dist/
 build/
+out/
+*.tsbuildinfo
 
+# ============================================
 # Logs
+# ============================================
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+pnpm-debug.log*
 
-# IDE
+# ============================================
+# Database
+# ============================================
+# Prisma migrations (keep tracked, but exclude if contains sensitive data)
+# prisma/migrations/
+*.db
+*.sqlite
+*.sqlite3
+
+# Database dumps
+*.sql
+*.dump
+
+# ============================================
+# IDE & Editors
+# ============================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
 
-# Prisma
-prisma/migrations/
-
-# Testing
+# ============================================
+# Testing & Coverage
+# ============================================
 coverage/
 .nyc_output/
+*.lcov
+.jest/
 
-# Temporary files
+# ============================================
+# OS Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================
+# Temporary Files
+# ============================================
 tmp/
 temp/
 *.tmp
+*.bak
+*.backup
+*.swp
+*.cache
+
+# ============================================
+# Docker (if used)
+# ============================================
+.dockerignore
+docker-compose.override.yml
+
+# ============================================
+# Stripe
+# ============================================
+# Never commit Stripe keys/webhooks
+stripe_*.json
+stripe-config.json

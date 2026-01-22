@@ -126,22 +126,44 @@ prisma/
 
 ### Installation
 
-1. **Install dependencies**:
+> **⚠️ IMPORTANT**: Request `.env` file from project lead before starting!
+
+1. **Clone and install**:
 ```bash
+git clone <repository-url>
+cd stripe-react-api
 npm install
 ```
 
-2. **Configure environment**:
+2. **Setup environment**:
+
+**Option A: Request from Project Lead (Recommended)**
 ```bash
-cp .env.example .env.development
+# Contact project lead for the complete .env file
+# Place it in the project root
 ```
 
-Edit `.env.development`:
+**Option B: Create from Template (Development Only)**
+```bash
+cp .env.example .env
+# Edit .env with your local configuration
+```
+
+**Required `.env` configuration:**
 ```env
+# Database (Update with your credentials)
 DATABASE_URL="mysql://root@127.0.0.1:3306/stripe_react_demo"
-JWT_SECRET=your-super-secret-jwt-key
-JWT_REFRESH_SECRET=your-super-secret-refresh-key
+
+# JWT Secrets (Generate strong random values)
+JWT_SECRET=your-super-secret-jwt-key-change-this
+JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-this
+
+# Application
+PORT=3000
 CORS_ORIGIN=http://localhost:3001
+
+# Stripe (Optional - get from project lead)
+STRIPE_SECRET_KEY=sk_test_your_key_here
 ```
 
 3. **Setup database**:
