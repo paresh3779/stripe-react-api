@@ -1,12 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService } from '@services/auth.service';
 import { ResponseUtil } from '@utils/response.util';
+import { RequestUtil } from '@utils/request.util';
 import { logger } from '@config/logger';
 
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const result = await authService.register(req.body);
+      const ipAddress = RequestUtil.getIpAddress(req);
+      const userAgent = RequestUtil.getUserAgent(req);
+      const deviceInfo = RequestUtil.getDeviceInfo(req);
+      
+      const result = await authService.register(req.body, ipAddress, userAgent, deviceInfo);
       logger.info(`User registered: ${result.user.email}`);
       ResponseUtil.created(res, result, 'Registration successful');
     } catch (error) {
@@ -16,7 +21,11 @@ export class AuthController {
 
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const result = await authService.login(req.body);
+      const ipAddress = RequestUtil.getIpAddress(req);
+      const userAgent = RequestUtil.getUserAgent(req);
+      const deviceInfo = RequestUtil.getDeviceInfo(req);
+      
+      const result = await authService.login(req.body, ipAddress, userAgent, deviceInfo);
       logger.info(`User logged in: ${result.user.email}`);
       ResponseUtil.success(res, result, 'Login successful');
     } catch (error) {
@@ -27,7 +36,11 @@ export class AuthController {
   async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { refreshToken } = req.body;
-      const tokens = await authService.refreshToken(refreshToken);
+      const ipAddress = RequestUtil.getIpAddress(req);
+      const userAgent = RequestUtil.getUserAgent(req);
+      const deviceInfo = RequestUtil.getDeviceInfo(req);
+      
+      const tokens = await authService.refreshToken(refreshToken, ipAddress, userAgent, deviceInfo);
       logger.info('Token refreshed successfully');
       ResponseUtil.success(res, tokens, 'Token refreshed');
     } catch (error) {

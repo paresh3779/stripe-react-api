@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { JwtUtil } from '@utils/jwt.util';
 import { ResponseUtil } from '@utils/response.util';
+import { tokenBlacklistRepository } from '@repositories/tokenBlacklist.repository';
 import { prisma } from '@config/database';
 
 export const authenticate = async (
@@ -17,6 +18,13 @@ export const authenticate = async (
     }
 
     const token = authHeader.substring(7);
+    
+    const isBlacklisted = await tokenBlacklistRepository.isTokenBlacklisted(token);
+    if (isBlacklisted) {
+      ResponseUtil.unauthorized(res, 'Token has been revoked');
+      return;
+    }
+    
     const payload = JwtUtil.verifyAccessToken(token);
 
     const user = await prisma.user.findUnique({

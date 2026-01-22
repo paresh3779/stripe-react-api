@@ -36,6 +36,25 @@ export class TokenRepository implements ITokenRepository {
       },
     });
   }
+
+  async getUserTokenCount(userId: string): Promise<number> {
+    return prisma.refreshToken.count({
+      where: { userId },
+    });
+  }
+
+  async deleteOldestUserToken(userId: string): Promise<void> {
+    const oldestToken = await prisma.refreshToken.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (oldestToken) {
+      await prisma.refreshToken.delete({
+        where: { id: oldestToken.id },
+      });
+    }
+  }
 }
 
 export const tokenRepository = new TokenRepository();

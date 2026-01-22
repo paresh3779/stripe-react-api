@@ -2,13 +2,19 @@ import { User } from '@prisma/client';
 import { IAuthService, LoginCredentials, RegisterData } from './interfaces/IAuthService';
 import { userRepository } from '@repositories/user.repository';
 import { tokenRepository } from '@repositories/token.repository';
+import { tokenBlacklistRepository } from '@repositories/tokenBlacklist.repository';
+import { loginAttemptRepository } from '@repositories/loginAttempt.repository';
 import { PasswordUtil } from '@utils/password.util';
 import { JwtUtil } from '@utils/jwt.util';
 import { ConflictError, UnauthorizedError } from '@utils/error.util';
 import { LoginResponse, AuthTokens } from '../types/common.types';
 
+const MAX_SESSIONS = 5;
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
+
 export class AuthService implements IAuthService {
-  async register(data: RegisterData): Promise<LoginResponse> {
+  async register(data: RegisterData, ipAddress?: string, userAgent?: string, deviceInfo?: string): Promise<LoginResponse> {
     const existingUser = await userRepository.findByEmail(data.email);
     if (existingUser) {
       throw new ConflictError('Email already registered');
@@ -23,10 +29,15 @@ export class AuthService implements IAuthService {
 
     const tokens = await this.generateTokens(user);
 
+    await this.manageUserSessions(user.id);
+
     await tokenRepository.create({
       token: tokens.refreshToken,
       userId: user.id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      ipAddress,
+      userAgent,
+      deviceInfo,
     });
 
     return {
@@ -43,32 +54,62 @@ export class AuthService implements IAuthService {
     };
   }
 
-  async login(credentials: LoginCredentials): Promise<LoginResponse> {
-    const user = await this.validateUser(credentials.email, credentials.password);
+  async login(credentials: LoginCredentials, ipAddress?: string, userAgent?: string, deviceInfo?: string): Promise<LoginResponse> {
+    await this.checkAccountLockout(credentials.email);
 
-    const tokens = await this.generateTokens(user);
+    try {
+      const user = await this.validateUser(credentials.email, credentials.password);
 
-    await tokenRepository.create({
-      token: tokens.refreshToken,
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
+      await loginAttemptRepository.create({
+        email: credentials.email,
+        ipAddress: ipAddress || 'unknown',
+        userAgent,
+        success: true,
+      });
 
-    return {
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-    };
+      const tokens = await this.generateTokens(user);
+
+      await this.manageUserSessions(user.id);
+
+      await tokenRepository.create({
+        token: tokens.refreshToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        ipAddress,
+        userAgent,
+        deviceInfo,
+      });
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          createdAt: user.createdAt,
+        },
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      };
+    } catch (error) {
+      await loginAttemptRepository.create({
+        email: credentials.email,
+        ipAddress: ipAddress || 'unknown',
+        userAgent,
+        success: false,
+        failReason: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
   }
 
-  async refreshToken(refreshToken: string): Promise<AuthTokens> {
+  async refreshToken(refreshToken: string, ipAddress?: string, userAgent?: string, deviceInfo?: string): Promise<AuthTokens> {
+    const isBlacklisted = await tokenBlacklistRepository.isTokenBlacklisted(refreshToken);
+    if (isBlacklisted) {
+      throw new UnauthorizedError('Token has been revoked');
+    }
+
     const payload = JwtUtil.verifyRefreshToken(refreshToken);
 
     const storedToken = await tokenRepository.findByToken(refreshToken);
@@ -90,17 +131,35 @@ export class AuthService implements IAuthService {
 
     const newTokens = await this.generateTokens(user);
 
+    await this.manageUserSessions(user.id);
+
     await tokenRepository.create({
       token: newTokens.refreshToken,
       userId: user.id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      ipAddress,
+      userAgent,
+      deviceInfo,
     });
 
     return newTokens;
   }
 
   async logout(refreshToken: string): Promise<void> {
-    await tokenRepository.deleteByToken(refreshToken);
+    try {
+      const storedToken = await tokenRepository.findByToken(refreshToken);
+      if (storedToken) {
+        await tokenBlacklistRepository.create({
+          token: refreshToken,
+          userId: storedToken.userId,
+          reason: 'User logout',
+          expiresAt: storedToken.expiresAt,
+        });
+      }
+      await tokenRepository.deleteByToken(refreshToken);
+    } catch (error) {
+      // Token might already be deleted, ignore error
+    }
   }
 
   async validateUser(email: string, password: string): Promise<User> {
@@ -132,6 +191,32 @@ export class AuthService implements IAuthService {
       accessToken: JwtUtil.generateAccessToken(payload),
       refreshToken: JwtUtil.generateRefreshToken(payload),
     };
+  }
+
+  private async checkAccountLockout(email: string): Promise<void> {
+    const failedAttempts = await loginAttemptRepository.getRecentFailedAttempts(
+      email,
+      LOCKOUT_DURATION_MINUTES
+    );
+
+    if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      throw new UnauthorizedError(
+        `Account temporarily locked due to multiple failed login attempts. Please try again in ${LOCKOUT_DURATION_MINUTES} minutes.`
+      );
+    }
+  }
+
+  private async manageUserSessions(userId: string): Promise<void> {
+    const tokenCount = await tokenRepository.getUserTokenCount(userId);
+    
+    if (tokenCount >= MAX_SESSIONS) {
+      await tokenRepository.deleteOldestUserToken(userId);
+    }
+  }
+
+  async logoutAllSessions(userId: string): Promise<void> {
+    await tokenBlacklistRepository.blacklistUserTokens(userId, 'Logout all sessions');
+    await tokenRepository.deleteByUserId(userId);
   }
 }
 
