@@ -138,7 +138,7 @@ cp .env.example .env.development
 
 Edit `.env.development`:
 ```env
-DATABASE_URL="mysql://root:root@localhost:3306/stripe_db"
+DATABASE_URL="mysql://root@127.0.0.1:3306/stripe_react_demo"
 JWT_SECRET=your-super-secret-jwt-key
 JWT_REFRESH_SECRET=your-super-secret-refresh-key
 CORS_ORIGIN=http://localhost:3001
@@ -146,9 +146,9 @@ CORS_ORIGIN=http://localhost:3001
 
 3. **Setup database**:
 ```bash
-# Create MySQL database
-mysql -u root -p
-CREATE DATABASE stripe_db;
+# Create MySQL database (if not exists)
+mysql -u root
+CREATE DATABASE stripe_react_demo;
 exit;
 
 # Or use MySQL Workbench / phpMyAdmin
